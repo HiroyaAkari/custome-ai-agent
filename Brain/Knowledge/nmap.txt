@@ -1,0 +1,96 @@
+NMAP SCANNING CHEATSHEET
+
+OVERVIEW
+Nmap (Network Mapper) is used for host discovery, port scanning, service/version detection, OS fingerprinting, and vulnerability scanning via scripts (NSE).
+
+BASIC SYNTAX
+nmap [scan type] [options] [target]
+Target can be: IP, range (192.168.1.1-254), CIDR (192.168.1.0/24), hostname
+
+HOST DISCOVERY
+Ping scan (no port scan): nmap -sn 192.168.1.0/24
+Skip ping (treat all hosts as up): nmap -Pn [target]
+ARP scan (LAN only, fast): nmap -PR [target]
+TCP SYN ping: nmap -PS80,443 [target]
+UDP ping: nmap -PU53 [target]
+
+PORT SCAN TYPES
+TCP SYN scan (default, stealthy, needs root): nmap -sS [target]
+TCP Connect scan (no root needed, louder): nmap -sT [target]
+UDP scan (slow, important for DNS/SNMP/TFTP): nmap -sU [target]
+NULL scan (no flags, evades some firewalls): nmap -sN [target]
+FIN scan: nmap -sF [target]
+Xmas scan (FIN+PSH+URG flags): nmap -sX [target]
+ACK scan (map firewall rules): nmap -sA [target]
+Window scan: nmap -sW [target]
+
+PORT SPECIFICATION
+Specific ports: nmap -p 22,80,443 [target]
+Port range: nmap -p 1-1000 [target]
+All 65535 ports: nmap -p- [target]
+Top 100 ports: nmap --top-ports 100 [target]
+Top 1000 ports (default): nmap [target]
+Fast scan top 100: nmap -F [target]
+
+VERSION AND OS DETECTION
+Service version detection: nmap -sV [target]
+Aggressive version detection: nmap -sV --version-intensity 9 [target]
+OS detection (needs root): nmap -O [target]
+Traceroute: nmap --traceroute [target]
+All of the above: nmap -A [target]
+
+TIMING TEMPLATES
+-T0 = paranoid (slowest, IDS evasion)
+-T1 = sneaky
+-T2 = polite
+-T3 = normal (default)
+-T4 = aggressive (faster, good for CTFs/labs)
+-T5 = insane (fastest, unreliable on slow networks)
+
+OUTPUT FORMATS
+Normal output: nmap [target] -oN output.txt
+XML output: nmap [target] -oX output.xml
+Grepable output: nmap [target] -oG output.gnmap
+All formats at once: nmap [target] -oA output
+Verbose: nmap -v [target]
+Very verbose: nmap -vv [target]
+
+NSE SCRIPTS (Nmap Scripting Engine)
+Run default scripts: nmap -sC [target]
+Run specific script: nmap --script=[scriptname] [target]
+Run script category: nmap --script=[category] [target]
+Script categories: auth, broadcast, brute, default, discovery, dos, exploit, external, fuzzer, intrusive, malware, safe, version, vuln
+
+USEFUL NSE SCRIPTS
+Vulnerability scan: nmap --script=vuln [target]
+HTTP enumeration: nmap --script=http-enum [target]
+HTTP title: nmap --script=http-title [target]
+SMB vulnerabilities: nmap --script=smb-vuln* [target]
+SMB shares: nmap --script=smb-enum-shares [target]
+FTP anonymous login: nmap --script=ftp-anon [target]
+DNS brute force: nmap --script=dns-brute [target]
+SSL/TLS info: nmap --script=ssl-enum-ciphers [target]
+MySQL info: nmap --script=mysql-info [target]
+SSH auth methods: nmap --script=ssh-auth-methods [target]
+Banner grabbing: nmap --script=banner [target]
+
+COMMON PENTEST COMMANDS
+Quick full scan: nmap -sV -sC -p- -T4 -oA fullscan [target]
+Stealth SYN scan: nmap -sS -T2 -p- [target]
+UDP top ports: nmap -sU --top-ports 200 [target]
+Full aggressive: nmap -A -p- [target]
+Network sweep: nmap -sn 192.168.1.0/24
+
+EVASION TECHNIQUES
+Fragmented packets: nmap -f [target]
+Decoy scan: nmap -D RND:10 [target]
+Spoof source IP: nmap -S [fake_ip] -e [interface] [target]
+Randomize hosts: nmap --randomize-hosts [target]
+Slow scan: nmap -T1 --scan-delay 5s [target]
+Custom source port: nmap --source-port 53 [target]
+
+IMPORTANT PORTS TO KNOW
+21 FTP, 22 SSH, 23 Telnet, 25 SMTP, 53 DNS
+80 HTTP, 110 POP3, 135 MSRPC, 139/445 SMB
+443 HTTPS, 3306 MySQL, 3389 RDP, 5432 PostgreSQL
+8080/8443 alternate HTTP/HTTPS, 27017 MongoDB

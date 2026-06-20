@@ -1,0 +1,143 @@
+HASHCAT AND PASSWORD CRACKING CHEATSHEET
+
+OVERVIEW
+Hashcat is the world's fastest GPU-based password recovery tool.
+John the Ripper is a CPU-based alternative, good for many formats automatically.
+
+IDENTIFYING HASH TYPES
+hashid [hash]
+hash-identifier
+Online: hashes.com, crackstation.net
+
+Common hash examples:
+MD5 (32 hex chars): 5f4dcc3b5aa765d61d8327deb882cf99
+SHA1 (40 hex chars): 5baa61e4c9b93f3f0682250b6cf8331b7ee68fd8
+SHA256 (64 hex chars): 5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8
+bcrypt ($2a$/$2b$): $2a$12$...
+NTLM (32 hex, Windows): 8846f7eaee8fb117ad06bdd830b7586c
+NetNTLMv2: username::domain:challenge:response (very long)
+SHA512crypt ($6$, Linux /etc/shadow): $6$rounds=5000$...
+WPA2 (22000 format): captured with hcxdumptool
+
+HASHCAT HASH MODES (-m)
+0    = MD5
+100  = SHA1
+1400 = SHA256
+1700 = SHA512
+1000 = NTLM (Windows)
+5600 = NetNTLMv2
+3200 = bcrypt
+1800 = sha512crypt ($6$, Linux shadow)
+22000 = WPA2 (new format)
+2500 = WPA2 (old hccapx format)
+500  = md5crypt ($1$, old Linux)
+1500 = DES (descrypt)
+13100 = Kerberoast (TGS-REP)
+18200 = AS-REP Roasting
+
+HASHCAT ATTACK MODES (-a)
+0 = Dictionary (wordlist)
+1 = Combinator (two wordlists combined)
+3 = Brute force / Mask
+6 = Hybrid wordlist + mask
+7 = Hybrid mask + wordlist
+
+DICTIONARY ATTACK
+hashcat -m [mode] hash.txt wordlist.txt
+hashcat -m 0 hashes.txt /usr/share/wordlists/rockyou.txt
+hashcat -m 1000 ntlm.txt /usr/share/wordlists/rockyou.txt
+
+DICTIONARY WITH RULES
+hashcat -m 0 hash.txt wordlist.txt -r rules/best64.rule
+hashcat -m 0 hash.txt wordlist.txt -r rules/rockyou-30000.rule
+hashcat -m 0 hash.txt wordlist.txt -r rules/dive.rule
+Rules location: /usr/share/hashcat/rules/
+best64.rule = 64 most effective mutations (fast)
+dive.rule = very thorough, slow
+OneRuleToRuleThemAll.rule = community favorite comprehensive rule
+
+MASK ATTACK (brute force with patterns)
+Mask charset placeholders:
+?l = lowercase (abcdefghijklmnopqrstuvwxyz)
+?u = uppercase (ABCDEFGHIJKLMNOPQRSTUVWXYZ)
+?d = digit (0123456789)
+?s = special (!@#$%^&*...)
+?a = all printable (?l?u?d?s)
+
+Examples:
+8 digit number: hashcat -m 0 hash.txt -a 3 ?d?d?d?d?d?d?d?d
+8 char lowercase: hashcat -m 0 hash.txt -a 3 ?l?l?l?l?l?l?l?l
+Upper+lower+digit 6 char: hashcat -m 0 hash.txt -a 3 ?a?a?a?a?a?a
+Password+4digits: hashcat -m 0 hash.txt -a 3 Password?d?d?d?d
+Custom charset: hashcat -m 0 hash.txt -a 3 -1 ?l?d ?1?1?1?1?1?1
+
+INCREMENT (try all lengths up to max):
+hashcat -m 0 hash.txt -a 3 ?a?a?a?a?a?a?a?a --increment --increment-min=4
+
+COMBINATOR ATTACK
+hashcat -m 0 hash.txt -a 1 wordlist1.txt wordlist2.txt
+Combines every word from list1 with every word from list2
+
+HYBRID ATTACK
+Wordlist + mask (e.g. password123):
+hashcat -m 0 hash.txt -a 6 wordlist.txt ?d?d?d
+Mask + wordlist (e.g. 123password):
+hashcat -m 0 hash.txt -a 7 ?d?d?d wordlist.txt
+
+USEFUL FLAGS
+--show = display cracked passwords from .potfile
+--username = input file has username:hash format
+-O = optimized kernels (faster, limits password length to 32)
+--force = ignore GPU warnings
+--status = show status every N seconds
+--status-timer=10 = update every 10 seconds
+-w 3 = workload profile (1=low, 4=nightmare)
+--session=name = name session
+--restore = restore named session
+-o cracked.txt = output cracked passwords to file
+--outfmt=2 = output format (2 = hash:plain)
+--potfile-path=my.pot = custom potfile
+
+CHECKING RESULTS
+hashcat -m [mode] hash.txt --show
+cat hashcat.potfile
+
+JOHN THE RIPPER
+Auto-detect and crack: john hash.txt
+With wordlist: john hash.txt --wordlist=/usr/share/wordlists/rockyou.txt
+With rules: john hash.txt --wordlist=wordlist.txt --rules
+Show cracked: john hash.txt --show
+Specific format: john hash.txt --format=bcrypt --wordlist=wordlist.txt
+
+Prepare shadow file for John:
+unshadow /etc/passwd /etc/shadow > combined.txt
+john combined.txt --wordlist=rockyou.txt
+
+Convert formats for John:
+zip2john file.zip > zip.hash
+pdf2john file.pdf > pdf.hash
+rar2john file.rar > rar.hash
+ssh2john id_rsa > ssh.hash
+
+WORDLISTS
+rockyou.txt: /usr/share/wordlists/rockyou.txt (14M passwords)
+SecLists: /usr/share/seclists/ or github.com/danielmiessler/SecLists
+fasttrack.txt: /usr/share/wordlists/fasttrack.txt (common passwords)
+Generate with crunch:
+crunch 6 8 abc123 -o custom.txt (6-8 chars using abc123)
+crunch 8 8 -t @@@@1234 (4 lowercase + 1234)
+
+ONLINE CRACKING
+crackstation.net (large rainbow tables, MD5/SHA1/NTLM)
+hashes.com
+md5decrypt.net
+
+EXTRACT HASHES FROM WINDOWS
+Local SAM database (needs SYSTEM):
+reg save HKLM\SAM sam.bak
+reg save HKLM\SYSTEM system.bak
+secretsdump.py -sam sam.bak -system system.bak LOCAL
+
+From domain controller:
+secretsdump.py domain/user:password@DC_IP
+impacket-secretsdump -just-dc-ntlm domain/user:pass@DC_IP

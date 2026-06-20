@@ -1,0 +1,127 @@
+RECONNAISSANCE AND OSINT CHEATSHEET
+
+OVERVIEW
+Reconnaissance is the first phase of penetration testing. Goal is to gather as much information about the target as possible before touching it directly.
+Two types: Passive (no direct contact with target) and Active (direct interaction with target systems).
+
+PASSIVE RECONNAISSANCE
+
+WHOIS LOOKUP
+whois domain.com
+whois IP_ADDRESS
+Online: whois.domaintools.com, lookup.icann.org
+Reveals: registrant info, name servers, registration dates, contact emails
+
+DNS ENUMERATION
+Basic lookup: nslookup domain.com
+DNS records: dig domain.com ANY
+A record (IPv4): dig domain.com A
+MX record (mail): dig domain.com MX
+NS record (nameservers): dig domain.com NS
+TXT record (SPF, DKIM, verification): dig domain.com TXT
+Zone transfer attempt: dig axfr @nameserver domain.com
+Reverse lookup: dig -x IP_ADDRESS
+
+DNS BRUTE FORCING
+dnsenum domain.com
+dnsrecon -d domain.com -t brt -D /usr/share/wordlists/dnsmap.txt
+gobuster dns -d domain.com -w /usr/share/wordlists/seclists/Discovery/DNS/subdomains-top1million-5000.txt
+subfinder -d domain.com
+amass enum -d domain.com
+
+SUBDOMAIN ENUMERATION (passive)
+crt.sh: search certificate transparency logs -> https://crt.sh/?q=%.domain.com
+dnsdumpster.com: passive DNS recon
+VirusTotal: https://virustotal.com/gui/domain/domain.com/relations
+Shodan: search for subdomains and exposed services
+theHarvester: theHarvester -d domain.com -b google,bing,linkedin,shodan
+
+GOOGLE DORKS (passive, powerful)
+site:domain.com = all indexed pages of domain
+site:domain.com filetype:pdf = PDF files
+site:domain.com inurl:admin = admin pages
+site:domain.com intitle:"index of" = directory listings
+site:domain.com ext:php inurl:?id= = possible SQLi endpoints
+"domain.com" filetype:xls OR filetype:xlsx = spreadsheets
+intext:"sql syntax near" site:domain.com = SQL errors
+site:domain.com -www = subdomains excluding www
+cache:domain.com = Google's cached version
+related:domain.com = similar sites
+
+SHODAN (search engine for exposed devices)
+shodan search hostname:domain.com
+shodan search org:"Company Name"
+shodan search product:apache city:"Phnom Penh"
+Filters: port:, os:, country:, city:, hostname:, org:, product:, version:
+Search exposed services: port:3389 (RDP), port:22 (SSH), port:21 (FTP)
+Find webcams: webcam has_screenshot:true
+Default creds: port:23 default password
+
+GITHUB DORKING (find leaked secrets)
+Search on github.com:
+org:companyname password
+org:companyname secret
+org:companyname api_key
+org:companyname "BEGIN RSA PRIVATE KEY"
+filename:.env DB_PASSWORD
+filename:config.php dbpassword
+extension:sql "INSERT INTO" "VALUES"
+Tools: truffleHog, gitleaks, gitrob
+
+EMAIL HARVESTING
+theHarvester -d domain.com -b google,bing,linkedin
+hunter.io (find company emails)
+phonebook.cz
+Email format guesser: firstname.lastname@domain.com, f.lastname@domain.com
+
+PEOPLE OSINT
+LinkedIn: search employees, find tech stack from job postings
+Job postings reveal: frameworks, tools, cloud providers used internally
+Twitter/X: employee usernames, company announcements
+OSINT Framework: osintframework.com (full resource map)
+
+ACTIVE RECONNAISSANCE
+
+PORT AND SERVICE SCANNING
+Full port scan: nmap -p- -sV -sC -T4 target
+UDP scan: nmap -sU --top-ports 100 target
+(See nmap cheatsheet for full detail)
+
+WEB TECHNOLOGY FINGERPRINTING
+whatweb target.com (identifies CMS, frameworks, server)
+wappalyzer browser extension
+curl -I http://target.com (check headers: Server, X-Powered-By, Set-Cookie)
+builtwith.com (online)
+Check /robots.txt, /sitemap.xml, /.well-known/
+
+CMS DETECTION AND SCANNING
+WordPress: wpscan --url http://target.com --enumerate u,p,t
+Joomla: joomscan --url http://target.com
+Drupal: droopescan scan drupal -u http://target.com
+Generic CMS: cmseek -u http://target.com
+
+NETWORK SCANNING
+Discover live hosts: netdiscover -r 192.168.1.0/24
+ARP scan: arp-scan -l or arp-scan 192.168.1.0/24
+Masscan (very fast): masscan -p1-65535 target --rate=1000
+
+SSL/TLS ANALYSIS
+sslscan target.com
+testssl.sh target.com
+Check: weak ciphers, expired certs, Heartbleed, POODLE, BEAST
+Online: ssllabs.com/ssltest/
+
+METADATA EXTRACTION FROM FILES
+exiftool file.pdf (reveals author, software, GPS, timestamps)
+exiftool *.jpg (batch process images)
+FOCA (Windows tool, extracts metadata from docs found via Google)
+metagoofil -d domain.com -t pdf,doc,xls -o output/
+
+WAF DETECTION
+wafw00f http://target.com
+nmap --script=http-waf-detect target
+Manual: send obviously malicious payload, check response code/message
+
+REPORTING RECON FINDINGS
+Always document: IP ranges, subdomains, open ports, technologies, employee names/emails, potential attack vectors
+maltego for visual relationship mapping

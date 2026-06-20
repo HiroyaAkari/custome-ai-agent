@@ -1,0 +1,128 @@
+WEB ENUMERATION AND FUZZING CHEATSHEET
+
+OVERVIEW
+Web enumeration finds hidden files, directories, subdomains, parameters, and endpoints on web targets.
+Fuzzing tests inputs with many payloads to find vulnerabilities or unexpected behavior.
+Always perform on authorized targets only.
+
+DIRECTORY AND FILE ENUMERATION
+
+GOBUSTER
+Directory scan:
+gobuster dir -u http://target.com -w /usr/share/wordlists/dirb/common.txt
+gobuster dir -u http://target.com -w /usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt
+With extensions: gobuster dir -u http://target.com -w wordlist.txt -x php,html,txt,bak,zip
+With cookies: gobuster dir -u http://target.com -w wordlist.txt -c "PHPSESSID=abc123"
+With headers: gobuster dir -u http://target.com -w wordlist.txt -H "Authorization: Bearer token"
+Threads: gobuster dir -u http://target.com -w wordlist.txt -t 50
+Follow redirects: gobuster dir -u http://target.com -w wordlist.txt -r
+Output: gobuster dir -u http://target.com -w wordlist.txt -o results.txt
+HTTPS no verify: gobuster dir -u https://target.com -w wordlist.txt -k
+
+DNS subdomain scan:
+gobuster dns -d target.com -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt
+gobuster dns -d target.com -w wordlist.txt -t 30
+
+FFUF (fast web fuzzer, very flexible)
+Directory fuzzing:
+ffuf -u http://target.com/FUZZ -w /usr/share/wordlists/dirb/common.txt
+With extensions: ffuf -u http://target.com/FUZZ -w wordlist.txt -e .php,.html,.txt,.bak
+POST body fuzzing: ffuf -u http://target.com/login -X POST -d "user=FUZZ&pass=test" -w wordlist.txt
+Header fuzzing: ffuf -u http://target.com -H "X-Forwarded-For: FUZZ" -w wordlist.txt
+Subdomain fuzzing: ffuf -u http://FUZZ.target.com -w subdomains.txt
+Parameter fuzzing: ffuf -u http://target.com/page?FUZZ=value -w params.txt
+Filter by status: ffuf -u http://target.com/FUZZ -w wordlist.txt -fc 404
+Filter by size: ffuf -u http://target.com/FUZZ -w wordlist.txt -fs 1234
+Match by size: ffuf -u http://target.com/FUZZ -w wordlist.txt -ms 500
+Match status: ffuf -u http://target.com/FUZZ -w wordlist.txt -mc 200,301,302
+Rate limit: ffuf -u http://target.com/FUZZ -w wordlist.txt -rate 100
+Output JSON: ffuf -u http://target.com/FUZZ -w wordlist.txt -o output.json -of json
+Threads: ffuf -u http://target.com/FUZZ -w wordlist.txt -t 40
+
+DIRB
+dirb http://target.com /usr/share/wordlists/dirb/common.txt
+dirb http://target.com -X .php,.html
+dirb http://target.com -c "Cookie: PHPSESSID=abc"
+dirb http://target.com -H "Authorization: Basic base64"
+
+DIRSEARCH
+dirsearch -u http://target.com
+dirsearch -u http://target.com -e php,html,js,txt,bak
+dirsearch -u http://target.com -w wordlist.txt
+dirsearch -u http://target.com --exclude-status=404,403
+
+FEROXBUSTER (recursive, fast)
+feroxbuster -u http://target.com
+feroxbuster -u http://target.com -w wordlist.txt -x php,html
+feroxbuster -u http://target.com --depth 3 (recursive depth)
+feroxbuster -u http://target.com -t 100 --rate-limit 200
+
+USEFUL WORDLISTS (SecLists)
+/usr/share/seclists/Discovery/Web-Content/common.txt (general)
+/usr/share/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt (medium size)
+/usr/share/seclists/Discovery/Web-Content/directory-list-2.3-big.txt (large)
+/usr/share/seclists/Discovery/Web-Content/raft-large-files.txt (files focused)
+/usr/share/seclists/Discovery/Web-Content/api/api-endpoints.txt (APIs)
+/usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt (subdomains)
+/usr/share/wordlists/dirb/common.txt (built into Kali, quick)
+
+IMPORTANT FILES TO LOOK FOR
+/.git/ (exposed git repo, download with git-dumper)
+/.env (environment variables, credentials)
+/config.php, /config.yml, /config.json
+/backup.zip, /backup.sql, /dump.sql
+/admin/, /administrator/, /wp-admin/
+/phpinfo.php (PHP configuration info)
+/server-status, /server-info (Apache status)
+/.htaccess, /.htpasswd
+/web.config (IIS config)
+/crossdomain.xml, /clientaccesspolicy.xml
+/api/v1/, /api/v2/ (API endpoints)
+/swagger.json, /openapi.json, /api-docs (API documentation)
+
+GIT REPOSITORY EXPOSURE
+Check if /.git/ is accessible: curl http://target.com/.git/HEAD
+If exposed, dump entire repo:
+git-dumper http://target.com/.git/ ./output_dir
+Then analyze: git log, git diff, git show, search for secrets
+
+PARAMETER DISCOVERY
+Param Miner (Burp extension) - finds hidden GET/POST params
+Arjun: arjun -u http://target.com/page
+ffuf for params: ffuf -u http://target.com/page?FUZZ=test -w params_wordlist.txt -fw 1
+SecLists params: /usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt
+
+API ENUMERATION
+Find API docs: /swagger.json, /openapi.yaml, /api/docs, /graphql
+GraphQL introspection:
+{"query":"{__schema{types{name fields{name}}}}"}
+Test all HTTP methods on endpoints: GET, POST, PUT, PATCH, DELETE, OPTIONS
+Check version endpoints: /api/v1/, /api/v2/, /api/v3/
+Postman collection files sometimes exposed: /postman_collection.json
+
+NIKTO (web server scanner)
+nikto -h http://target.com
+nikto -h http://target.com -port 8080
+nikto -h http://target.com -ssl (HTTPS)
+nikto -h http://target.com -output results.txt
+nikto -h http://target.com -Tuning 1234567890 (all tests)
+Finds: outdated software, dangerous files, misconfigurations, default files
+
+WHATWEB
+whatweb http://target.com
+whatweb -v http://target.com (verbose)
+whatweb -a 3 http://target.com (aggressive)
+whatweb --log-json=output.json http://target.com
+
+SPIDER AND CRAWL
+Burp Suite Spider: right-click target -> Spider this host
+gospider: gospider -s http://target.com -o output
+hakrawler: echo http://target.com | hakrawler
+katana: katana -u http://target.com
+waybackurls: echo target.com | waybackurls (historical URLs from Wayback Machine)
+gau: gau target.com (get all URLs from multiple sources)
+
+VIRTUAL HOST FUZZING
+Some servers host multiple sites on same IP via Host header:
+ffuf -u http://TARGET_IP -H "Host: FUZZ.target.com" -w subdomains.txt -fw [default_words]
+gobuster vhost -u http://target.com -w subdomains.txt

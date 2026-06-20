@@ -1,0 +1,1 @@
+pip install nmap ipwhois dnspython python-whois requests beautifulsoup4

